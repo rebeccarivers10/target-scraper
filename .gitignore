@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Playwright browsers (huge, don't commit)
+playwright-browsers/
+
+# Batch results (data, not code)
+batch_results.json
+
+# Environment
+.env
+venv/
