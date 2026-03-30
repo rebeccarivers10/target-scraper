@@ -12,3 +12,6 @@ batch_results.json
 # Environment
 .env
 venv/
+
+# Claude Code settings
+.claude/

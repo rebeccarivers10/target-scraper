@@ -1,0 +1,13 @@
+# One keyword per line. Lines starting with # are ignored.
+# Edit this file then paste into the Batch Mode tab in the web UI.
+
+shirts
+running shoes
+laptops
+coffee makers
+yoga pants
+sunglasses
+backpacks
+sneakers
+vitamins
+protein powder
