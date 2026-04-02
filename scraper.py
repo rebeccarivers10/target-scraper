@@ -53,47 +53,75 @@ class SponsoredAd:
 
 # ── Fallback: guess brand website by trying common domain patterns ────────────
 
+def _check_domain(domain: str) -> bool:
+    """Return True if the domain resolves and returns a non-error HTTP status."""
+    url = f"https://{domain}"
+    try:
+        r = _requests.head(url, headers=_REQ_HEADERS, timeout=6, allow_redirects=True)
+        if r.status_code < 400:
+            return True
+        # Some servers reject HEAD — fall back to GET
+        if r.status_code in (400, 405):
+            r2 = _requests.get(url, headers=_REQ_HEADERS, timeout=6, allow_redirects=True)
+            return r2.status_code < 400
+    except _requests.exceptions.Timeout:
+        # Site exists but is slow — count it as found
+        return True
+    except Exception:
+        pass
+    return False
+
+
 def _search_brand_website(brand: str, browser=None) -> str:
     """
-    Build candidate domains from the brand name and check each one with a
-    HEAD request. Returns the first domain that responds with a non-error
-    status, or '' if none resolve.
+    Build candidate domains from the brand name and verify each one.
+    Returns the first domain that resolves, or '' if none do.
 
     Examples:
-        'Milk-Bone'  -> milkbone.com
-        'Zesty Paws' -> zestypaws.com
-        'Garmin'     -> garmin.com
+        'Milk-Bone'   -> milkbone.com
+        'Zesty Paws'  -> zestypaws.com
+        'Remington'   -> remingtonproducts.com
     """
     if not brand:
         return ""
 
     clean = re.sub(r"[^a-z0-9]", "", brand.lower())
     words = re.sub(r"[^a-z0-9 ]", "", brand.lower()).split()
+    first = words[0] if words else clean
 
     candidates: list[str] = []
     if clean:
         candidates += [
             f"{clean}.com",
             f"the{clean}.com",
+            f"{clean}usa.com",
+            f"{clean}products.com",
             f"{clean}brand.com",
+            f"{clean}hair.com",
+            f"{clean}beauty.com",
         ]
-    # Also try hyphenated version for multi-word brands (e.g. pet-honesty.com)
+    # Hyphenated multi-word (e.g. hot-tools.com, pet-honesty.com)
     if len(words) > 1:
         hyphenated = "-".join(words)
-        candidates.append(f"{hyphenated}.com")
+        candidates += [
+            f"{hyphenated}.com",
+            f"the{hyphenated}.com",
+        ]
+    # First word only (e.g. "L'Oreal Paris" -> loreal.com)
+    if first and first != clean:
+        candidates += [
+            f"{first}.com",
+            f"the{first}.com",
+            f"{first}usa.com",
+        ]
 
+    seen: set[str] = set()
     for domain in candidates:
-        try:
-            r = _requests.head(
-                f"https://{domain}",
-                headers=_REQ_HEADERS,
-                timeout=5,
-                allow_redirects=True,
-            )
-            if r.status_code < 400:
-                return domain
-        except Exception:
+        if domain in seen:
             continue
+        seen.add(domain)
+        if _check_domain(domain):
+            return domain
 
     return ""
 
