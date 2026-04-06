@@ -14,7 +14,6 @@ import re
 import sys
 from dataclasses import dataclass, asdict
 
-import requests as _requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
@@ -32,12 +31,6 @@ PHONE_RE  = re.compile(r"\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}")
 _EMAIL_SKIP = ("noreply", "no-reply", "donotreply", "example.", "sentry.",
                "shopify.", "wix.", "google.", "yourname@", "@email.")
 
-_REQ_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-}
-
 
 @dataclass
 class SponsoredAd:
@@ -49,81 +42,6 @@ class SponsoredAd:
     search_term: str
     brand_href:  str = ""   # e.g. /b/hanes-premium/-/N-55f3l
     website:     str = ""   # domain extracted from seller email
-
-
-# ── Fallback: guess brand website by trying common domain patterns ────────────
-
-def _check_domain(domain: str) -> bool:
-    """Return True if the domain resolves and returns a non-error HTTP status."""
-    url = f"https://{domain}"
-    try:
-        r = _requests.head(url, headers=_REQ_HEADERS, timeout=6, allow_redirects=True)
-        if r.status_code < 400:
-            return True
-        # Some servers reject HEAD — fall back to GET
-        if r.status_code in (400, 405):
-            r2 = _requests.get(url, headers=_REQ_HEADERS, timeout=6, allow_redirects=True)
-            return r2.status_code < 400
-    except _requests.exceptions.Timeout:
-        # Site exists but is slow — count it as found
-        return True
-    except Exception:
-        pass
-    return False
-
-
-def _search_brand_website(brand: str, browser=None) -> str:
-    """
-    Build candidate domains from the brand name and verify each one.
-    Returns the first domain that resolves, or '' if none do.
-
-    Examples:
-        'Milk-Bone'   -> milkbone.com
-        'Zesty Paws'  -> zestypaws.com
-        'Remington'   -> remingtonproducts.com
-    """
-    if not brand:
-        return ""
-
-    clean = re.sub(r"[^a-z0-9]", "", brand.lower())
-    words = re.sub(r"[^a-z0-9 ]", "", brand.lower()).split()
-    first = words[0] if words else clean
-
-    candidates: list[str] = []
-    if clean:
-        candidates += [
-            f"{clean}.com",
-            f"the{clean}.com",
-            f"{clean}usa.com",
-            f"{clean}products.com",
-            f"{clean}brand.com",
-            f"{clean}hair.com",
-            f"{clean}beauty.com",
-        ]
-    # Hyphenated multi-word (e.g. hot-tools.com, pet-honesty.com)
-    if len(words) > 1:
-        hyphenated = "-".join(words)
-        candidates += [
-            f"{hyphenated}.com",
-            f"the{hyphenated}.com",
-        ]
-    # First word only (e.g. "L'Oreal Paris" -> loreal.com)
-    if first and first != clean:
-        candidates += [
-            f"{first}.com",
-            f"the{first}.com",
-            f"{first}usa.com",
-        ]
-
-    seen: set[str] = set()
-    for domain in candidates:
-        if domain in seen:
-            continue
-        seen.add(domain)
-        if _check_domain(domain):
-            return domain
-
-    return ""
 
 
 # ── Brand website enrichment ──────────────────────────────────────────────────
@@ -307,23 +225,6 @@ def scrape(search_term: str) -> list[SponsoredAd]:
                 ad.website = domain
                 if domain:
                     print(f"    -> {domain}")
-
-        # ── Step 4: fallback search for brands still missing a website ────────
-        if ads:
-            missing = [ad for ad in ads if not ad.website and ad.brand]
-            if missing:
-                print(f"Searching web for {len(missing)} brand(s) with no website...")
-                search_cache: dict[str, str] = {}  # brand -> domain
-                for ad in missing:
-                    if ad.brand in search_cache:
-                        ad.website = search_cache[ad.brand]
-                        continue
-                    print(f"  Searching for {ad.brand}...")
-                    domain = _search_brand_website(ad.brand, browser)
-                    search_cache[ad.brand] = domain
-                    ad.website = domain
-                    if domain:
-                        print(f"    -> {domain}")
 
         browser.close()
 
