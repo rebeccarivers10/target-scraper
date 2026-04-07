@@ -99,8 +99,14 @@ def _batch_worker(keywords):
                 }
 
                 with _batch_lock:
-                    _batch_state["results"].append(row)
-                    _persist(_batch_state["results"])
+                    dedup_key = row["website"] or row["brand"]
+                    already_seen = any(
+                        (r["website"] or r["brand"]) == dedup_key
+                        for r in _batch_state["results"]
+                    )
+                    if not already_seen:
+                        _batch_state["results"].append(row)
+                        _persist(_batch_state["results"])
 
         except Exception as exc:
             with _batch_lock:
@@ -231,7 +237,7 @@ def batch_download():
     if not rows:
         return Response("No results yet.", status=204)
 
-    fieldnames = ["search_term", "brand", "website", "emails", "phones"]
+    fieldnames = ["brand", "website", "emails", "phones"]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
